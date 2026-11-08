@@ -1,0 +1,48 @@
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "xmlriver-mcp-toolkit"
+version = "0.1.0"
+description = "Independent XMLRiver MCP server, async client and SEO collection CLI"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+authors = [{name = "Mikhail Bulgakov"}]
+dependencies = ["mcp>=1.27,<2", "httpx>=0.28.1,<0.29", "pydantic>=2.13,<3", "PyYAML>=6,<7", "filelock>=3.25,<4"]
+
+[project.urls]
+Repository = "https://github.com/dietbear13/xmlriver_mcp"
+
+[project.scripts]
+xmlriver-mcp = "xmlriver_mcp.server:main"
+xmlriver = "xmlriver_mcp.cli:main"
+
+[dependency-groups]
+dev = ["pytest>=9,<10", "pytest-asyncio>=1,<2", "ruff>=0.15,<1", "mypy>=1.19,<2", "types-PyYAML>=6,<7", "build>=1,<2", "twine>=6,<7"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/xmlriver_mcp"]
+core-metadata-version = "2.4"
+
+[tool.hatch.build.targets.sdist]
+core-metadata-version = "2.4"
+include = ["src", "tests", "pyproject.toml", "README*", "LICENSE", "CHANGELOG.md", "CONTRIBUTING.md", "SECURITY.md", "examples", "uv.lock"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]
+
+[tool.mypy]
+python_version = "3.11"
+check_untyped_defs = true
+files = ["src"]

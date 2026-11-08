@@ -1,0 +1,22 @@
+target_domain: example.org
+include_subdomains: true
+depth: 50
+phrases: [coffee, tea]
+column: phrase
+engines:
+  - name: yandex
+    region: 213
+    device: mobile
+  - name: google
+    region: 1011969
+    device: mobile
+regions:
+  - name: Moscow
+    yandex: 213
+    google: 1011969
+    hints: [Москва, Москве]
+    expected_hosts: [example.org]
+max_attempts: 100
+cache_ttl_hours: 24
+# Optional approximate prices; absent means unknown, never free.
+costs_per_1000: {}

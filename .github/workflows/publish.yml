@@ -1,0 +1,42 @@
+name: Publish
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      index:
+        description: Target package index
+        type: choice
+        options: [testpypi, pypi]
+        default: pypi
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --locked
+      - run: uv run ruff check . && uv run mypy && uv run pytest
+      - run: uv build
+      - run: uv run python scripts/audit_dist.py
+      - run: uv run twine check dist/*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: distributions
+          path: dist/
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.index || 'pypi' }}
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: distributions
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: ${{ inputs.index == 'testpypi' && 'https://test.pypi.org/legacy/' || 'https://upload.pypi.org/legacy/' }}
