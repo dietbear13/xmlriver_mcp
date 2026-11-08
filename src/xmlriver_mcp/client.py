@@ -2,9 +2,11 @@
 
 import asyncio
 import json
+import logging
 import math
 import os
 import random
+import re
 import time
 from collections import deque
 from datetime import datetime, timezone
@@ -26,6 +28,28 @@ CREDS_HELP = "Set XMLRIVER_USER and XMLRIVER_KEY in the environment."
 TEMP_CODES = {"110", "111", "115", "201", "202", "500"}
 WS_TEMP_CODES = {"101", "110", "115", "500"}
 NO_RESULTS_CODES = {"15"}
+
+
+class AuthenticationFilter(logging.Filter):
+    """Redact authenticated URLs even when an embedding application enables HTTP logs."""
+
+    def filter(self, record):
+        message = record.getMessage()
+        record.msg = re.sub(r"""(?i)([?&](?:key|user)=)[^&\s'"\\]+""", r"\1[redacted]", message)
+        record.args = ()
+        return True
+
+
+_auth_filter = AuthenticationFilter()
+for _logger in (
+    "httpx",
+    "httpcore.connection",
+    "httpcore.http11",
+    "httpcore.http2",
+    "httpcore.proxy",
+    "httpcore.socks",
+):
+    logging.getLogger(_logger).addFilter(_auth_filter)
 
 
 def classify_error_code(code: str) -> str:
