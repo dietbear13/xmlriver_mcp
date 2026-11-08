@@ -1,0 +1,22 @@
+name: MCP Registry
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/registry.yml', 'server.json']
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  register:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache: false
+      - name: Build pinned official publisher through the Go module proxy
+        run: go install github.com/modelcontextprotocol/registry/cmd/publisher@v1.8.1
+      - run: publisher login github-oidc
+      - run: publisher publish
