@@ -17,6 +17,7 @@ Repository = "https://github.com/dietbear13/xmlriver_mcp"
 
 [project.scripts]
 xmlriver-mcp = "xmlriver_mcp.server:main"
+xmlriver-mcp-toolkit = "xmlriver_mcp.server:main"
 xmlriver = "xmlriver_mcp.cli:main"
 
 [dependency-groups]
