@@ -1,9 +1,6 @@
 name: MCP Registry
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths: ['.github/workflows/registry.yml', 'server.json']
 permissions:
   contents: read
   id-token: write
