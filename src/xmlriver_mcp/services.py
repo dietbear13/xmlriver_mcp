@@ -1,10 +1,12 @@
 """Shared business logic for MCP, CLI and batch collection."""
 
 import asyncio
+import os
 from datetime import datetime, timezone
+from pathlib import Path
 
 from .errors import XmlRiverError
-from .models import DEFAULT_REGION, INPUTS, SerpArgs, TopArgs
+from .models import DEFAULT_REGION, INPUTS, BatchArgs, SerpArgs, TopArgs
 from .parsers import find_matches, parse_serp, parse_wordstat
 
 
@@ -12,7 +14,9 @@ def utcnow() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-async def collect_serp(client, args: SerpArgs, *, progress: dict | None = None) -> dict:
+async def collect_serp(
+    client, args: SerpArgs, *, progress: dict | None = None, checkpoint=None, resume=None
+) -> dict:
     out = progress if progress is not None else {}
     out.update(
         query=args.query,
@@ -29,7 +33,12 @@ async def collect_serp(client, args: SerpArgs, *, progress: dict | None = None) 
         estimated_cost_rub=None,
         exhausted=False,
     )
-    for page_index in range(args.pages):
+    if resume:
+        out.update(resume)
+    out["resumed_pages"] = out["successful_pages"]
+    for page_index in range(out["successful_pages"], args.pages):
+        if out["exhausted"]:
+            break
         xml = await client.fetch_serp(
             args.query,
             engine=args.engine,
@@ -52,6 +61,9 @@ async def collect_serp(client, args: SerpArgs, *, progress: dict | None = None) 
         out["fetched_at"] = utcnow()
         if not docs:
             out["exhausted"] = True
+        if checkpoint:
+            checkpoint(out)
+        if not docs:
             break
     out.update(complete=True, status="ok", results_count=len(out["results"]))
     if args.target_domain:
@@ -81,6 +93,14 @@ async def wordstat_top(client, args: TopArgs) -> dict:
 
 async def execute(client, name: str, arguments: dict, *, deadline: float = 180) -> dict:
     model = INPUTS[name].model_validate(arguments)
+    if isinstance(model, BatchArgs):
+        from .query_batch import run_queries
+        from .storage import Storage
+
+        workspace = Path(os.getenv("XMLRIVER_WORKSPACE") or Path.home() / ".xmlriver" / "data")
+        return await run_queries(
+            client, model, deadline=deadline, store=Storage(workspace), refresh=model.refresh
+        )
     try:
         async with asyncio.timeout(deadline):
             if name == "get_balance":

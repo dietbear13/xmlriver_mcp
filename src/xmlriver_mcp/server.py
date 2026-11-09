@@ -20,8 +20,9 @@ from .services import execute
 async def lifespan(server):
     async with XmlRiverClient(
         *resolve_xmlriver_creds(),
-        rate_max=int(os.getenv("XMLRIVER_RATE_MAX", "5")),
-        rate_window=float(os.getenv("XMLRIVER_RATE_WINDOW", "1.5")),
+        rate_max=int(os.getenv("XMLRIVER_RATE_MAX", "9")),
+        rate_window=float(os.getenv("XMLRIVER_RATE_WINDOW", "1")),
+        max_concurrent=int(os.getenv("XMLRIVER_CONCURRENCY", "9")),
     ) as client:
         yield {"client": client}
 
@@ -37,6 +38,12 @@ async def list_tools():
             description=(
                 "Get account balance and approximate tariffs (network requests)."
                 if name == "get_balance"
+                else "Process up to 100 phrases concurrently for SERP or Wordstat. "
+                "Use operation, queries and common parameters. Up to 9 concurrent requests; "
+                "paid retries count toward max_attempts. Returns ordered results and partial errors. "
+                "Saves a durable journal and cache automatically and returns file paths. "
+                "Use CLI batch for lists larger than 100 phrases."
+                if name == "batch"
                 else "Query XMLRiver. Requests may charge your account; retries may also be charged. "
                 "SERP positions count organic documents, not visual search blocks."
             ),
@@ -81,6 +88,7 @@ async def call_tool(name: str, arguments: dict):
     return types.CallToolResult(
         content=[types.TextContent(type="text", text=json.dumps(result, ensure_ascii=False))],
         structuredContent=result,
+        isError=name == "batch" and result.get("status") != "ok",
     )
 
 

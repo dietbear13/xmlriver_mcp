@@ -4,12 +4,12 @@
   "title": "XMLRiver MCP Toolkit",
   "description": "Google/Yandex organic results, Wordstat keywords and demand history using your XMLRiver account.",
   "repository": {"url": "https://github.com/dietbear13/xmlriver_mcp", "source": "github"},
-  "version": "0.1.1",
+  "version": "0.2.0",
   "packages": [{
     "registryType": "pypi",
     "registryBaseUrl": "https://pypi.org",
     "identifier": "xmlriver-mcp-toolkit",
-    "version": "0.1.1",
+    "version": "0.2.0",
     "runtimeHint": "uvx",
     "transport": {"type": "stdio"},
     "environmentVariables": [

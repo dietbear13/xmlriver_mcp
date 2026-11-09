@@ -33,8 +33,9 @@ class Config(Arguments):
     cache_ttl_hours: Annotated[float, Field(ge=0)] = 24
     max_attempts: Annotated[int, Field(ge=1)] = 1000
     deadline: Annotated[float, Field(gt=0)] = 180
-    rate_max: Annotated[int, Field(ge=1)] = 5
-    rate_window: Annotated[float, Field(gt=0)] = 1.5
+    concurrency: Annotated[int, Field(ge=1, le=9)] = 9
+    rate_max: Annotated[int, Field(ge=1)] = 9
+    rate_window: Annotated[float, Field(gt=0)] = 1.0
     costs_per_1000: dict[Engine, Annotated[float, Field(ge=0)]] = {}
 
 

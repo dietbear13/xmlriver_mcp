@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "xmlriver-mcp-toolkit"
-version = "0.1.1"
+version = "0.2.0"
 description = "Independent XMLRiver MCP server, async client and SEO collection CLI"
 readme = "README.md"
 requires-python = ">=3.11"

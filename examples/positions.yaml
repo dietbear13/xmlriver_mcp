@@ -20,3 +20,7 @@ max_attempts: 100
 cache_ttl_hours: 24
 # Optional approximate prices; absent means unknown, never free.
 costs_per_1000: {}
+
+concurrency: 9
+rate_max: 9
+rate_window: 1.0

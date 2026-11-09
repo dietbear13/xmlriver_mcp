@@ -54,11 +54,33 @@ class HistoryArgs(WordstatArgs):
         return self
 
 
+class BatchArgs(Arguments):
+    operation: Literal["serp", "wordstat_top", "wordstat_history"]
+    queries: Annotated[list[Query], Field(min_length=1, max_length=100)]
+    parameters: dict = Field(default_factory=dict)
+    concurrency: Annotated[int, Field(ge=1, le=9)] = 9
+    max_attempts: Annotated[int, Field(ge=1, le=10000)] = 1000
+    refresh: bool = False
+
+    @model_validator(mode="after")
+    def validate_requests(self):
+        if "query" in self.parameters:
+            raise ValueError("Use queries for batch phrases")
+        for query in self.queries:
+            INPUTS[self.operation].model_validate({**self.parameters, "query": query})
+        return self
+
+
+class BatchFileArgs(BatchArgs):
+    queries: Annotated[list[Query], Field(min_length=1, max_length=100000)]
+
+
 INPUTS: dict[str, type[Arguments]] = {
     "get_balance": Arguments,
     "serp": SerpArgs,
     "wordstat_top": TopArgs,
     "wordstat_history": HistoryArgs,
+    "batch": BatchArgs,
 }
 
 
@@ -92,9 +114,17 @@ class SerpResult(ObjectResult):
     results: list[dict]
 
 
+class BatchResult(ObjectResult):
+    status: str
+    http_attempts: int
+    completed_tasks: int
+    results: list[dict]
+
+
 OUTPUTS: dict[str, type[ObjectResult]] = {
     "get_balance": BalanceResult,
     "serp": SerpResult,
     "wordstat_top": TopResult,
     "wordstat_history": ObjectResult,
+    "batch": BatchResult,
 }

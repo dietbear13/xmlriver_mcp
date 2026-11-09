@@ -1,6 +1,8 @@
 """Test-only subprocess: mock HTTP without a production test backdoor."""
 
 import asyncio
+import os
+import tempfile
 from contextlib import asynccontextmanager
 
 import httpx
@@ -31,4 +33,6 @@ async def lifespan(server):
 
 
 server.lifespan = lifespan
-asyncio.run(serve())
+with tempfile.TemporaryDirectory() as workspace:
+    os.environ["XMLRIVER_WORKSPACE"] = workspace
+    asyncio.run(serve())

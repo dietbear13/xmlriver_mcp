@@ -14,6 +14,7 @@ from email.utils import parsedate_to_datetime
 
 import httpx
 
+from .concurrency import AdaptiveGate, count_attempt, notify_attempt
 from .errors import XmlRiverError
 from .models import Engine, HistoryArgs, SerpArgs, WordstatArgs
 from .parsers import extract_error, parse_serp, parse_wordstat
@@ -109,9 +110,9 @@ class XmlRiverClient:
         key: str = "",
         *,
         timeout: float = DEFAULT_TIMEOUT,
-        rate_max: int = 5,
-        rate_window: float = 1.5,
-        max_concurrent: int = 5,
+        rate_max: int = 9,
+        rate_window: float = 1.0,
+        max_concurrent: int = 9,
         max_attempts: int | None = None,
         transport=None,
     ):
@@ -119,8 +120,7 @@ class XmlRiverClient:
             raise ValueError("Invalid client limits")
         self._user, self._key = user, key
         self._timeout, self._transport = timeout, transport
-        self._limiter = RateLimiter(rate_max, rate_window)
-        self._semaphore = asyncio.Semaphore(max_concurrent)
+        self.gate = AdaptiveGate(max_concurrent, rate_max, rate_window)
         self._http: httpx.AsyncClient | None = None
         self.max_attempts = max_attempts
         self.http_attempts = 0
@@ -143,33 +143,61 @@ class XmlRiverClient:
             raise ValueError("max_retries must be 0..10")
         for attempt in range(max_retries + 1):
             delay = None
-            async with self._semaphore:
-                await self._limiter.acquire()
+            await self.gate.acquire()
+            try:
                 if self.max_attempts is not None and self.http_attempts >= self.max_attempts:
                     raise XmlRiverError(kind="budget")
+                count_attempt()
                 self.http_attempts += 1
+                notify_attempt()
                 try:
                     response = await self._http.get(
                         url, params={**params, "user": self._user, "key": self._key}
                     )
+                    delay = retry_after(response.headers.get("Retry-After"))
+                    # Extract only a numeric wait, never expose the provider's body.
+                    wait_text = response.text[:8192]
+                    if wait_text.lstrip().startswith("{"):
+                        try:
+                            body = json.loads(wait_text)
+                            if isinstance(body, dict) and isinstance(body.get("error"), str):
+                                wait_text = body["error"]
+                        except ValueError:
+                            pass
+                    wait = re.search(
+                        r"(?:через|after)\s+(\d+)\s*(?:сек|sec)",
+                        wait_text,
+                        re.IGNORECASE,
+                    )
+                    if wait:
+                        delay = max(delay or 0, int(wait[1]))
                     status = response.status_code
                     if status == 429 or 500 <= status < 600:
-                        delay = retry_after(response.headers.get("Retry-After"))
                         raise XmlRiverError(code=str(status), kind="temp")
                     if not 200 <= status < 300:
                         raise XmlRiverError(
                             code=str(status), kind="auth" if status in (401, 403) else "params"
                         )
-                    return parser(response)
+                    result = parser(response)
+                    await self.gate.succeeded()
+                    return result
                 except httpx.HTTPError:
                     error = XmlRiverError(kind="temp")
                 except XmlRiverError as exc:
                     error = exc
+                if delay is None:
+                    if error.code in {"115", "429"}:
+                        delay = 600.0
+                    elif error.code in {"110", "111"}:
+                        delay = min(5 * 2**attempt, 60) + random.uniform(0, 0.25)
+                    else:
+                        delay = min(2**attempt, 15) + random.uniform(0, 0.25)
+                await self.gate.failed(error, delay)
+            finally:
+                await self.gate.release()
             if error.kind != "temp" or attempt == max_retries:
                 raise error from None
-            await asyncio.sleep(
-                delay if delay is not None else min(2**attempt, 15) + random.uniform(0, 0.25)
-            )
+            # All workers respect the shared cooldown on their next admission.
         raise AssertionError("unreachable")
 
     async def fetch_serp(

@@ -2,6 +2,7 @@ import argparse
 import asyncio
 import json
 import logging
+import math
 import sys
 from pathlib import Path
 
@@ -13,7 +14,8 @@ from .client import XmlRiverClient, resolve_xmlriver_creds
 from .config import load_config
 from .csv_io import read_phrases, update_csv
 from .errors import XmlRiverError
-from .models import INPUTS
+from .models import INPUTS, BatchFileArgs
+from .query_batch import run_queries
 from .regions import validate_regions
 from .services import execute
 from .storage import Storage
@@ -25,6 +27,15 @@ def parser():
     )
     commands = ap.add_subparsers(dest="command", required=True)
     commands.add_parser("balance")
+    recover = commands.add_parser("recover")
+    recover.add_argument("--workspace", required=True, type=Path)
+    recover.add_argument("--run", required=True)
+    batch = commands.add_parser("batch")
+    batch.add_argument("--input", required=True, type=Path)
+    batch.add_argument("--workspace", type=Path)
+    batch.add_argument("--dry-run", action="store_true")
+    batch.add_argument("--refresh", action="store_true")
+    batch.add_argument("--deadline", type=float, default=3600)
     serp = commands.add_parser("serp")
     serp.add_argument("query")
     serp.add_argument("--engine", choices=["yandex", "google"], default="yandex")
@@ -57,14 +68,46 @@ def parser():
             command.add_argument("--dry-run", action="store_true")
             command.add_argument("--refresh", action="store_true")
             command.add_argument("--csv", type=Path)
+            command.add_argument("--concurrency", type=int, choices=range(1, 10))
             if action == "update-csv":
                 command.add_argument("--run", required=True)
     return ap
 
 
 async def run(args):
+    if args.command == "recover":
+        return Storage(args.workspace).recover_run(args.run)
+    if args.command == "batch":
+        model = BatchFileArgs.model_validate_json(args.input.read_text(encoding="utf-8"))
+        if not math.isfinite(args.deadline) or args.deadline <= 0:
+            raise ValueError("Invalid deadline")
+        store = Storage(args.workspace or args.input.resolve().parent / "xmlriver-data")
+        if args.dry_run:
+            return await run_queries(
+                None,
+                model,
+                store=store,
+                dry_run=True,
+                refresh=args.refresh or model.refresh,
+                return_results=False,
+            )
+        async with XmlRiverClient(
+            *resolve_xmlriver_creds(),
+            max_concurrent=model.concurrency,
+            max_attempts=model.max_attempts,
+        ) as client:
+            return await run_queries(
+                client,
+                model,
+                store=store,
+                refresh=args.refresh or model.refresh,
+                deadline=args.deadline,
+                return_results=False,
+            )
     if args.command in ("positions", "regions"):
         cfg = load_config(args.config)
+        if args.concurrency is not None:
+            cfg.concurrency = args.concurrency
         store = Storage(args.workspace or args.config.resolve().parent / "xmlriver-data")
         path = args.csv or (Path(cfg.csv) if cfg.csv else None)
         if args.action == "update-csv":
@@ -73,7 +116,11 @@ async def run(args):
             return update_csv(store, path, args.run, cfg.column, dry_run=args.dry_run)
         if args.action == "validate":
             async with XmlRiverClient(
-                *resolve_xmlriver_creds(), max_attempts=cfg.max_attempts
+                *resolve_xmlriver_creds(),
+                max_attempts=cfg.max_attempts,
+                max_concurrent=cfg.concurrency,
+                rate_max=cfg.rate_max,
+                rate_window=cfg.rate_window,
             ) as client:
                 return await validate_regions(
                     cfg, store, client, refresh=args.refresh, dry_run=args.dry_run

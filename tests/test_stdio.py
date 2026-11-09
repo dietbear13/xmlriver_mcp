@@ -20,6 +20,7 @@ async def test_real_stdio_success():
                 "wordstat_top",
                 "wordstat_history",
                 "serp",
+                "batch",
             }
             for name in ("get_balance", "wordstat_top", "wordstat_history", "serp"):
                 args = {} if name == "get_balance" else {"query": "coffee"}
@@ -27,6 +28,16 @@ async def test_real_stdio_success():
                 assert not result.isError
                 assert json.loads(result.content[0].text) == result.structuredContent
             result = await session.call_tool("serp", {"query": "q", "pages": 11})
+            assert result.isError
+            result = await session.call_tool(
+                "batch", {"operation": "wordstat_top", "queries": ["coffee", "tea"]}
+            )
+            assert not result.isError
+            assert result.structuredContent["completed_tasks"] == 2
+            assert json.loads(result.content[0].text) == result.structuredContent
+            result = await session.call_tool(
+                "batch", {"operation": "serp", "queries": ["coffee"], "parameters": {"pages": 0}}
+            )
             assert result.isError
 
 
@@ -39,7 +50,7 @@ async def test_discovery_without_credentials_and_restart():
         async with stdio_client(params) as (read, write):
             async with ClientSession(read, write) as session:
                 await session.initialize()
-                assert len((await session.list_tools()).tools) == 4
+                assert len((await session.list_tools()).tools) == 5
                 result = await session.call_tool("get_balance", {})
                 assert result.isError
                 assert json.loads(result.content[0].text)["kind"] == "auth"
